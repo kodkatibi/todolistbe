@@ -1,43 +1,26 @@
-# REST API Example
+# Todo list backend REST API
 
-This example shows how to implement a **REST API** using [Express](https://expressjs.com/) and [Prisma Client](https://www.prisma.io/docs/concepts/components/prisma-client). It uses a SQLite database file with some initial dummy data which you can find at [`./prisma/dev.db`](./prisma/dev.db).
+This example shows how to implement a **REST API** using [Express](https://expressjs.com/) and [Prisma Client](https://www.prisma.io/docs/concepts/components/prisma-client). It uses a MYSQL database with some initial dummy data.
 
 ## Getting started
 
-### 1. Download example and install dependencies
+### 1. Download and install dependencies
 
-Download this example:
-
-```
-npx try-prisma --template javascript/rest-express
-```
-
-Install npm dependencies:
-```
-cd rest-express
-npm install
-```
-
-<details><summary><strong>Alternative:</strong> Clone the entire repo</summary>
-
-Clone this repository:
+Download:
 
 ```
-git clone git@github.com:prisma/prisma-examples.git --depth=1
+git clone https://github.com/kodkatibi/todolistbe
 ```
 
 Install npm dependencies:
-
 ```
-cd prisma-examples/javascript/rest-express
+cd todolistbe
 npm install
 ```
-
-</details>
 
 ### 2. Create and seed the database
 
-Run the following command to create your SQLite database file. This also creates the `User` and `Post` tables that are defined in [`prisma/schema.prisma`](./prisma/schema.prisma):
+Run the following command to create your MYSQL database. This also creates the `User` and `Todo` tables:
 
 ```
 npx prisma migrate dev --name init
