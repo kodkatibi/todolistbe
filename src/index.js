@@ -1,7 +1,9 @@
 const express = require('express')
-const {PrismaClient} = require('@prisma/client')
-
-const prisma = new PrismaClient()
+const bcrypt = require("bcrypt");
+const {PrismaClient, Prisma} = require('@prisma/client')
+const {body, validationResult} = require('express-validator');
+const jwt = require('jsonwebtoken')
+const client = new PrismaClient()
 const app = express()
 
 app.use(express.json())
@@ -9,148 +11,97 @@ app.use(express.json())
 app.get('/', async (req, res) => {
     res.send('Hi')
 })
-app.post(`/signup`, async (req, res) => {
-    const {name, email, posts} = req.body
-
-    const postData = posts
-        ? posts.map((post) => {
-            return {title: post.title, content: post.content || undefined}
-        })
-        : []
-
-    const result = await prisma.user.create({
-        data: {
-            name,
-            email,
-            todos: {
-                create: postData,
-            },
-        },
-    })
-    res.json(result)
-})
-
-app.post(`/post`, async (req, res) => {
-    const {title, content, authorEmail} = req.body
-    const result = await prisma.post.create({
-        data: {
-            title,
-            content,
-            author: {connect: {email: authorEmail}},
-        },
-    })
-    res.json(result)
-})
-
-app.put('/post/:id/views', async (req, res) => {
-    const {id} = req.params
-
+app.post(`/register`, async (req, res, next) => {
     try {
-        const post = await prisma.post.update({
-            where: {id: Number(id)},
+        let {name, password, email} = req.body
+        password = bcrypt.hashSync(password, 5)
+
+        const result = await client.users.create({
             data: {
-                viewCount: {
-                    increment: 1,
-                },
+                name, email, password
             },
         })
-
-        res.json(post)
-    } catch (error) {
-        res.json({error: `Post with ID ${id} does not exist in the database`})
-    }
-})
-
-app.put('/publish/:id', async (req, res) => {
-    const {id} = req.params
-
-    try {
-        const postData = await prisma.post.findUnique({
-            where: {id: Number(id)},
-            select: {
-                published: true,
-            },
-        })
-
-        const updatedPost = await prisma.post.update({
-            where: {id: Number(id) || undefined},
-            data: {published: !postData.published || undefined},
-        })
-        res.json(updatedPost)
-    } catch (error) {
-        res.json({error: `Post with ID ${id} does not exist in the database`})
-    }
-})
-
-app.delete(`/post/:id`, async (req, res) => {
-    const {id} = req.params
-    const post = await prisma.post.delete({
-        where: {
-            id: Number(id),
-        },
-    })
-    res.json(post)
-})
-
-app.get('/users', async (req, res) => {
-    const users = await prisma.user.findMany()
-    res.json(users)
-})
-
-app.get('/user/:id/drafts', async (req, res) => {
-    const {id} = req.params
-
-    const drafts = await prisma.user
-        .findUnique({
-            where: {
-                id: Number(id),
-            },
-        })
-        .posts({
-            where: {published: false},
-        })
-
-    res.json(drafts)
-})
-
-app.get(`/post/:id`, async (req, res) => {
-    const {id} = req.params
-
-    const post = await prisma.post.findUnique({
-        where: {id: Number(id)},
-    })
-    res.json(post)
-})
-
-app.get('/feed', async (req, res) => {
-    const {searchString, skip, take, orderBy} = req.query
-
-    const or = searchString
-        ? {
-            OR: [
-                {title: {contains: searchString}},
-                {content: {contains: searchString}},
-            ],
+        let token;
+        try {
+            token = jwt.sign({userId: result.id, email: result.email}, 'secretkeyappearshere', {expiresIn: "1h"})
+        } catch (e) {
+            console.log(err);
+            const error = new Error("Error! Something went wrong.");
+            return next(error);
         }
-        : {}
 
-    const posts = await prisma.post.findMany({
-        where: {
-            published: true,
-            ...or,
-        },
-        include: {author: true},
-        take: Number(take) || undefined,
-        skip: Number(skip) || undefined,
-        orderBy: {
-            updatedAt: orderBy || undefined,
-        },
-    })
-
-    res.json(posts)
+        res.json({
+            success: true,
+            data: {
+                userId: result.id,
+                email: result.email,
+                name: result.name,
+                token: token,
+            },
+        })
+    } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+            // The .code property can be accessed in a type-safe manner
+            if (e.code === 'P2002') {
+                console.log(
+                    'There is a unique constraint violation, a new user cannot be created with this email'
+                )
+            }
+        }
+        throw e
+    }
 })
 
-const server = app.listen(3000, () =>
-    console.log(`
-🚀 Server ready at: http://localhost:3000`),
-)
+app.post('/login', async (req, res, next) => {
+    let {email, password} = req.body;
+
+    let existingUser;
+    try {
+        existingUser = await client.users.findFirst({where: {email: email}});
+    } catch {
+        const error = new Error("Error! Something went wrong.");
+        return next(error);
+    }
+
+
+    let hash = false
+    await bcrypt.compare(password, existingUser.password)
+        .then(result => {
+            console.log(result)
+            hash = result;
+        })
+        .catch(err => {
+            console.log(err)
+        })
+
+    if (!existingUser || !hash) {
+        const error = Error("Wrong details please check at once");
+        return next(error);
+    }
+    let token;
+    try {
+        //Creating jwt token
+        token = jwt.sign(
+            {userId: existingUser.id, email: existingUser.email},
+            "secretkeyappearshere",
+            {expiresIn: "1h"}
+        );
+    } catch (err) {
+        console.log(err);
+        const error = new Error("Error! Something went wrong.");
+        return next(error);
+    }
+
+    res.status(200).json({
+        success: true,
+        data: {
+            userId: existingUser.id,
+            email: existingUser.email,
+            token: token,
+        },
+    });
+})
+
+
+const server = app.listen(3000, () => console.log(`
+🚀 Server ready at: http://localhost:3000`),)
